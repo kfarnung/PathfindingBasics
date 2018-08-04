@@ -16,7 +16,7 @@ public class Agent : MonoBehaviour
     bool solutionVisible;
     string prevAlgo;
 
-    Camera camera;
+    new Camera camera;
 
     bool moveCube = false;
     int i;
@@ -103,9 +103,6 @@ public class Agent : MonoBehaviour
         heuristicScore[startPosition] = HeuristicCostEstimate(startPosition, goalPosition, heuristic);
         distanceFromStart[startPosition] = 0;
 
-        // Nodes we've already explored
-        HashSet<Vector3> exploredNodes = new HashSet<Vector3>();
-
         // The item dequeued from a priority queue will always be the one with the lowest int value
         //    In this case we will input nodes with their calculated distances from the start g(x),
         //    so we will always take the node with the lowest distance from the queue.
@@ -124,74 +121,57 @@ public class Agent : MonoBehaviour
                 print("A*" + heuristic + ": " + distanceFromStart[goalPosition]);
                 print("A*" + heuristic + " time: " + (Time.realtimeSinceStartup - timeNow).ToString());
                 print("A*" + heuristic + " checked: " + checkedNodes);
+
                 return goalPosition;
             }
-
-            //Otherwise, add it to our explored nodes set and look at its neighbors
-            exploredNodes.Add(curr);
 
             IList<Vector3> neighbors = GetWalkableNodes(curr);
 
             foreach (Vector3 node in neighbors)
             {
-                // If we've explored a neighbor, don't look at it again
-                if (exploredNodes.Contains(node))
-                {
-                    continue;
-                }
-
                 // Get the distance so far, add it to the distance to the neighbor
                 int currScore = distanceFromStart[curr] + Weight(node);
 
-                // If we have not explored the neighbor, add it to the queue
-                if (!priorityQueue.Contains(node))
+                if (currScore < distanceFromStart[node])
                 {
-                    priorityQueue.Enqueue(node, heuristicScore[node]);
-                }
-                // If our distance to this neighbor is MORE than another calculated shortest path
-                //    to this neighbor, skip it.
-                else if (currScore >= distanceFromStart[node])
-                {
-                    continue;
-                }
+                    // Otherwise if the score is LESS, we will set a new node parent and update the scores
+                    //    as our current best for the path so far.
+                    nodeParents[node] = curr;
+                    distanceFromStart[node] = currScore;
 
-                // Otherwise if the score is LESS, we will set a new node parent and update the scores
-                //    as our current best for the path so far.
-                nodeParents[node] = curr;
-                distanceFromStart[node] = currScore;
-                heuristicScore[node] = distanceFromStart[node] + HeuristicCostEstimate(node, goalPosition, heuristic);
+                    int hScore = distanceFromStart[node] + HeuristicCostEstimate(node, goalPosition, heuristic);
+                    heuristicScore[node] = hScore;
+
+                    // If we have not explored the neighbor, add it to the queue
+                    if (!priorityQueue.Contains(node))
+                    {
+                        priorityQueue.Enqueue(node, hScore);
+                    }
+                }
             }
         }
 
         return startPosition;
     }
 
-    //Dijkstra's algorithm.
-    //Populates IList<Vector3> path with a valid solution to the goalPosition.
-    //Returns the goalPosition if a solution is found.
-    //Returns the startPosition if no solution is found.
+    // Dijkstra's algorithm.
+    // Populates IList<Vector3> path with a valid solution to the goalPosition.
+    // Returns the goalPosition if a solution is found.
+    // Returns the startPosition if no solution is found.
     Vector3 FindShortestPathDijkstra(Vector3 startPosition, Vector3 goalPosition)
     {
         float timeNow = Time.realtimeSinceStartup;
         uint checkedNodes = 0;
 
-        HashSet<Vector3> exploredNodes = new HashSet<Vector3>();
-
-        //A priority queue containing the shortest distance so far from the start to a given node
+        // A priority queue containing the shortest distance so far from the start to a given node
         IPriorityQueue<Vector3, int> priority = new SimplePriorityQueue<Vector3, int>();
 
-        //A list of all nodes that are walkable, initialized to have infinity distance from start
+        // A list of all nodes that are walkable, initialized to have infinity distance from start
         IDictionary<Vector3, int> distances = walkablePositions
             .Where(x => x.Value == true)
             .ToDictionary(x => x.Key, x => int.MaxValue);
 
-        //The parent of all nodes is "blank" ((-1, -1, -1) is invalid for our environment)
-        foreach (Vector3 vertex in distances.Keys.ToList())
-        {
-            nodeParents.Add(new KeyValuePair<Vector3, Vector3>(vertex, new Vector3(-1, -1, -1)));
-        }
-
-        //Our distance from the start to itself is 0
+        // Our distance from the start to itself is 0
         distances[startPosition] = 0;
         priority.Enqueue(startPosition, 0);
 
@@ -200,41 +180,41 @@ public class Agent : MonoBehaviour
             Vector3 curr = priority.Dequeue();
             checkedNodes++;
 
-            exploredNodes.Add(curr);
+            if (curr == goalPosition)
+            {
+                // If the goal position is the lowest position in the priority queue then there are
+                // no other nodes that could possibly have a shorter path.
+                print("Dijkstra: " + distances[goalPosition]);
+                print("Dijkstra time: " + (Time.realtimeSinceStartup - timeNow).ToString());
+                print("Dijkstra checked: " + checkedNodes);
+
+                return goalPosition;
+            }
 
             IList<Vector3> nodes = GetWalkableNodes(curr);
 
-            //Look at each neighbor to the node
+            // Look at each neighbor to the node
             foreach (Vector3 node in nodes)
             {
-                if (exploredNodes.Contains(node))
-                {
-                    continue;
-                }
-
-                if (!priority.Contains(node))
-                {
-                    priority.Enqueue(node, distances[node]);
-                }
-
                 int dist = distances[curr] + Weight(node);
 
-                //If the distance to the parent, PLUS the distance added by the neighbor,
-                //is less than the current distance to the neighbor,
-                //update the neighbor's paent to curr, update its current best distance
+                // If the distance to the parent, PLUS the distance added by the neighbor,
+                // is less than the current distance to the neighbor,
+                // update the neighbor's parent to curr, update its current best distance
                 if (dist < distances[node])
                 {
                     distances[node] = dist;
                     nodeParents[node] = curr;
+
+                    if (!priority.Contains(node))
+                    {
+                        priority.Enqueue(node, dist);
+                    }
                 }
             }
         }
 
-        print("Dijkstra: " + distances[goalPosition]);
-        print("Dijkstra time: " + (Time.realtimeSinceStartup - timeNow).ToString());
-        print("Dijkstra checked: " + checkedNodes);
-
-        return goalPosition;
+        return startPosition;
     }
 
     int Weight(Vector3 node)
